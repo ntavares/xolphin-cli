@@ -1,0 +1,184 @@
+#!/usr/bin/python
+#
+# CLI script to communicate with Xolphin SSL certificate API
+#
+# (c) 2016, Nuno Tavares <nuno.tavares@synrix.com>
+#
+
+
+import getopt
+import sys
+import os.path
+from xolphincli import xolphincli
+import requests.packages.urllib3
+import yaml
+
+FILE_CREDENTIALS = 'credentials.secret'
+
+
+def debug(level, args):
+    if DEBUG>=level:
+        print args
+
+def handleArguments(argv):
+    global DEBUG
+    DEBUG = 0
+    global USE_TEST_API
+    USE_TEST_API = False
+    global command
+    command = 'list-certs'
+    global HELPERFILE
+    HELPERFILE = None
+    global CERT_ID
+    CERT_ID = None
+    global REQ_YEARS
+    REQ_YEARS = 1
+    global REQ_PRODUCTID
+    REQ_PRODUCTID = None
+    global REQ_DOMAIN
+    REQ_DOMAIN = None
+    global REQ_SUBJALTNAMES
+    REQ_SUBJALTNAMES = None
+    global COMPAT_MODE
+    COMPAT_MODE = False
+
+    help = "Usage: ./" + os.path.basename(__file__) + ' [options] ' + \
+        '\n  --test\t\tRun against Test API' + \
+        '\n  --debug\t\tEnable debug mode.' + \
+        '\n  -l|--certs\t\tList certificates (default)' + \
+        '\n  -r|--reqs\t\tList active/pending requests' + \
+        '\n  --products\t\tList available products' + \
+        '\n  --download <cert id>\tDownloads certificate with id <cert id> (obtained from the --certs listing)' + \
+        '\n  --decode\t\tDecodes the CSR (needs --csr)' + \
+        '\n  --csr <file>\t\tSpecifies location for the CSR file' + \
+        '\n  --compat\t\tFor --download, saves files using underscores (_), instead of dot (.)' + \
+        '\n' + \
+        '\n  --request\t\tRequest new certificate (see further options below)' + \
+        '\n    -y\t\t\tValidaty (years). Default: ' + str(REQ_YEARS) + \
+        '\n    -p\t\t\tProduct ID (from --products)' + \
+        '\n    -d\t\t\tDomain (CN)' + \
+        '\n    -a\t\t\tSubjectAltNames (comma-separated list)' + \
+        '\nNOTE: Use file \'' + FILE_CREDENTIALS + '\' in format username:password.'
+
+    try:
+        opts, args = getopt.getopt(
+            argv, "hlry:p:d:a:", [
+                'test', 'debug', 'certs', 'reqs', 'decode', 'products', 'download=', 'csr=', 'request', "compat" ])
+    except getopt.GetoptError as e:
+        print "Error: " + str(e)
+        print help
+        sys.exit(2)
+
+    if len(opts) == 0:
+        print help
+        sys.exit(2)
+
+    helpRequested = False
+    for opt, arg in opts:
+        if opt in ['-h']:
+            print help
+            sys.exit()
+        if opt in ['--debug']:
+            DEBUG += 1
+        if opt in ['--test']:
+            USE_TEST_API = True
+        if opt in ['-l', '--certs']:
+            command = 'list-certs'
+        if opt in ['-r', '--reqs']:
+            command = 'list-reqs'
+        if opt in ['--products']:
+            command = 'list-products'
+        if opt in ['--decode']:
+            command = 'decode-csr'
+        if opt in ['--request']:
+            command = 'request-cert'
+        if opt in ['--compat']:
+            COMPAT_MODE = True
+        if opt in ['--csr']:
+            HELPERFILE = arg
+        if opt in ['--download']:
+            command = 'download-cert'
+            CERT_ID = arg
+        if opt in ['-y']:
+            REQ_YEARS = arg
+        if opt in ['-p']:
+            REQ_PRODUCTID = arg
+        if opt in ['-d']:
+            REQ_DOMAIN = arg
+        if opt in ['-a']:
+            REQ_SUBJALTNAMES = arg
+
+# Parse arguments
+if __name__ == "__main__":
+    handleArguments(sys.argv[1:])
+    debug(2, 'Command line args: ' + str(sys.argv))
+
+debug(2, "command=%s, HELPERFILE=%s" % (command, HELPERFILE) )
+
+if command in ['decode-csr', 'request-cert'] and not HELPERFILE:
+    print 'ERROR: You need to specify --csr <file> along with --decode or --request'
+    sys.exit(1)
+
+if command in ['request-cert'] and not REQ_DOMAIN:
+    print 'ERROR: You need to specify at least one (-d)omain with --request'
+    sys.exit(1)
+
+if DEBUG > 0:
+    print "# Warning: Debug mode is enabled, level=%d!" % DEBUG
+#    requests.packages.urllib3.disable_warnings()
+
+try:
+    with open(FILE_CREDENTIALS) as f:
+      credentials = [x.strip().split(':', 1) for x in f.readlines()]
+    XOLPHIN_USERNAME = credentials[0][0]
+    XOLPHIN_PASSWORD = credentials[0][1]
+
+    #debug(2, "username=%s, password=%s" % (XOLPHIN_USERNAME, XOLPHIN_PASSWORD))
+    c = xolphincli.XolphinCLI(DEBUG, XOLPHIN_USERNAME, XOLPHIN_PASSWORD, USE_TEST_API)
+
+except IOError as e:
+    print "Error: " + str(e)
+    sys.exit(3)
+
+
+
+if command == 'list-certs':
+    c.listCertificates()
+elif command == 'list-reqs':
+    c.listRequests()
+elif command == 'decode-csr':
+    try:
+        with open(HELPERFILE) as f:
+            csrtext = [x.strip() for x in f.readlines()]
+        c.decodeCSR( "\n".join(csrtext) )
+    except IOError as e:
+        print "Error: " + str(e)
+        sys.exit(3)
+elif command == 'download-cert':
+    c.downloadCertificate( int(CERT_ID), COMPAT_MODE )
+elif command == 'list-products':
+    c.listProducts()
+elif command == 'request-cert':
+    try:
+        with open(HELPERFILE) as f:
+            csrtext = [x.strip() for x in f.readlines()]
+
+        approverdetails_t = None
+        with open('approverdetails.yml', 'r') as stream:
+            try:
+                approverdetails_t = yaml.load(stream)
+            except yaml.YAMLError as exc:
+                print('Error: Cannot load approverdetails.yml : ' + exc)
+                sys.exit(3)
+        print(approverdetails_t)
+        c.loadApproverDetails(approverdetails_t['profiles'])
+        c.requestCertificate("\n".join(csrtext), REQ_PRODUCTID, REQ_YEARS, REQ_DOMAIN, REQ_SUBJALTNAMES)
+    except IOError as e:
+        print "Error: " + str(e)
+        sys.exit(3)
+
+else:
+    print "ERROR: Invalid comand" # we shall never get here :)
+
+
+

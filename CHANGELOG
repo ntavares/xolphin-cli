@@ -1,0 +1,9 @@
+2018-07-30
+* Few adaptations to be published on github.
+
+2016-12-02
+* Added support for different requestor details (approverdetails.yml)
+* Support for --compat: for --download, saves files using underscores (_), instead of dot (.)
+
+2016-11-27
+* Initial implementation, supports full flow
