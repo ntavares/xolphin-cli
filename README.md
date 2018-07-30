@@ -1,7 +1,6 @@
 # Xolphin CLI
 
-This is a CLI tool to request certificates.
-You can use this tools any machine that reaches Xolphin API endpoints.
+This is a CLI tool to request certificates from [Xolphin.com](https://www.xolphin.com/). You can use this tool any machine that reaches [Xolphin API](https://api.xolphin.com/) endpoints.
 
 Before proceeding, you'll have to:
 * Place a file credentials.secret with your Xolphin customer credentials, in the format username:password
@@ -9,7 +8,7 @@ Before proceeding, you'll have to:
 * Install python modules: sudo pip install setuptools prettytable xolphin-api pyaml
 
 Normal flow for this script:
-```
+```bash
 # list available products, to obtain product ids
 ./xolphin-cli -p
 
